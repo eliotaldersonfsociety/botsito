@@ -1,40 +1,27 @@
-# Image size ~ 400MB
-FROM node:21-alpine3.18 as builder
+# Utiliza la imagen base de Node.js con Alpine
+FROM node:21-alpine3.18
 
+# Instalar Git para poder clonar repositorios durante la instalación de dependencias
+RUN apk add --no-cache git
+
+# Establecer el directorio de trabajo en el contenedor
 WORKDIR /app
 
-RUN corepack enable && corepack prepare pnpm@latest --activate
-ENV PNPM_HOME=/usr/local/bin
-
+# Copiar los archivos necesarios del proyecto al contenedor
 COPY . .
 
-COPY package*.json *-lock.yaml ./
-
-RUN apk add --no-cache --virtual .gyp \
-        python3 \
-        make \
-        g++ \
-    && apk add --no-cache git \
-    && pnpm install && pnpm run build \
-    && apk del .gyp
-
-FROM node:21-alpine3.18 as deploy
-
-WORKDIR /app
-
-ARG PORT
-ENV PORT $PORT
-EXPOSE $PORT
-
-COPY --from=builder /app/assets ./assets
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/*.json /app/*-lock.yaml ./
-
-RUN corepack enable && corepack prepare pnpm@latest --activate 
-ENV PNPM_HOME=/usr/local/bin
-
+# Instalar las dependencias necesarias
 RUN npm cache clean --force && pnpm install --production --ignore-scripts \
     && addgroup -g 1001 -S nodejs && adduser -S -u 1001 nodejs \
-    && rm -rf $PNPM_HOME/.npm $PNPM_HOME/.node-gyp
+    && rm -rf /usr/local/bin/.npm /usr/local/bin/.node-gyp
 
-CMD ["npm", "start"]
+# Copiar los archivos de producción al contenedor
+COPY --from=builder /app/assets ./assets
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/*.json /app/*-lock.yaml ./ 
+
+# Configurar el puerto que el contenedor va a exponer
+EXPOSE 3000
+
+# Comando para ejecutar el contenedor
+CMD ["node", "dist/app.js"]
